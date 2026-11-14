@@ -1,122 +1,165 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState, useEffect } from 'react';
+import { api } from './api'; 
+import './App.css';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [idEstudiante, setIdEstudiante] = useState('');
+  const [idIntento, setIdIntento] = useState(null);
+  const [preguntas, setPreguntas] = useState([]);
+  const [respuestas, setRespuestas] = useState({});
+  const [resultado, setResultado] = useState(null);
+  const [diagnostico, setDiagnostico] = useState(null);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState(null);
+
+  const [tiempoRestante, setTiempoRestante] = useState(90 * 60);
+
+  useEffect(() => {
+    if (idIntento && !resultado) {
+      const timer = setInterval(() => {
+        setTiempoRestante((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            enviarExamen(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [idIntento, resultado]);
+
+  const formatoTiempo = (segundos) => {
+    const m = Math.floor(segundos / 60).toString().padStart(2, '0');
+    const s = (segundos % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const iniciarExamen = async (e) => {
+    e.preventDefault();
+    setCargando(true);
+    setError(null);
+    try {
+      const data = await api.iniciarExamen(idEstudiante);
+      setIdIntento(data.id_intento);
+      setPreguntas(data.preguntas);
+      setTiempoRestante(90 * 60);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  const seleccionarOpcion = (idPregunta, idOpcion) => {
+    setRespuestas({ ...respuestas, [idPregunta]: idOpcion });
+  };
+
+  const enviarExamen = async (porTiempo = false) => {
+    if (!porTiempo && !window.confirm("¿Estás seguro de enviar el examen? No podrás cambiar tus respuestas.")) return;
+    
+    setCargando(true);
+    try {
+      const respuestasFormateadas = Object.keys(respuestas).map(idPregunta => ({
+        id_pregunta: parseInt(idPregunta),
+        id_opcion_seleccionada: respuestas[idPregunta]
+      }));
+
+      const dataCalificar = await api.calificarExamen(idIntento, respuestasFormateadas);
+      setResultado(dataCalificar);
+
+      const dataDiag = await api.obtenerDiagnostico(idIntento);
+      setDiagnostico(dataDiag.diagnostico);
+
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  if (resultado && diagnostico) {
+    return (
+      <div className="container">
+        <h1>Resultados del Examen</h1>
+        {resultado.tiempo_agotado && <p style={{color: 'red', fontWeight: 'bold'}}>⏰ {resultado.mensaje}</p>}
+        
+        <div className="card-resultado">
+          <h2>Nota: {resultado.calificacion} / 5.0</h2>
+          <p>Respondiste correctamente {resultado.correctas} preguntas.</p>
+        </div>
+
+        <div className="card-diagnostico">
+          <h3>Diagnóstico Pedagógico (Gemini AI):</h3>
+          <p>{diagnostico}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!idIntento) {
+    return (
+      <div className="container inicio">
+        <h1>Sistema de Evaluación</h1>
+        <p>Ingresa tu ID de estudiante para comenzar.</p>
+        {error && <p className="error">{error}</p>}
+        <form onSubmit={iniciarExamen} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <input 
+            type="number" 
+            placeholder="ID de Estudiante" 
+            value={idEstudiante}
+            onChange={(e) => setIdEstudiante(e.target.value)}
+            required
+          />
+          <button type="submit" disabled={cargando}>
+            {cargando ? 'Cargando...' : 'Comenzar Examen'}
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <div className="container">
+      <div className="header-examen">
+        <h1>Examen en Curso</h1>
+        <div className="reloj">
+          ⏳ Tiempo restante: {formatoTiempo(tiempoRestante)}
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      </div>
+      
+      <p>Responde las siguientes {preguntas.length} preguntas. Puedes enviar el examen antes de tiempo si lo deseas.</p>
+      {error && <p className="error">{error}</p>}
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+      {preguntas.map((p, index) => (
+        <div key={p.id_pregunta} className="pregunta-card">
+          <h3>{index + 1}. {p.enunciado}</h3>
+          <div className="opciones">
+            {p.opciones_respuesta.map((opcion) => (
+              <label key={opcion.id_opcion}>
+                <input 
+                  type="radio" 
+                  name={`pregunta_${p.id_pregunta}`} 
+                  value={opcion.id_opcion}
+                  onChange={() => seleccionarOpcion(p.id_pregunta, opcion.id_opcion)}
+                />
+                {opcion.texto_opcion}
+              </label>
+            ))}
+          </div>
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      ))}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      <button 
+        className="btn-enviar" 
+        onClick={() => enviarExamen(false)} 
+        disabled={cargando}
+      >
+        {cargando ? 'Calificando...' : 'Enviar Examen'}
+      </button>
+    </div>
+  );
 }
 
-export default App
+export default App;
