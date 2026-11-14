@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
-import { api } from './api'; 
+import { api } from './api';
 import './App.css';
 
 function App() {
-  const [idEstudiante, setIdEstudiante] = useState('');
+  // Estados para el Login
+  const [documento, setDocumento] = useState('');
+  const [password, setPassword] = useState('');
+  const [nombreEstudiante, setNombreEstudiante] = useState('');
+
+  // Estados del Examen
   const [idIntento, setIdIntento] = useState(null);
   const [preguntas, setPreguntas] = useState([]);
   const [respuestas, setRespuestas] = useState({});
@@ -12,6 +17,7 @@ function App() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState(null);
 
+  // Temporizador: 90 minutos
   const [tiempoRestante, setTiempoRestante] = useState(90 * 60);
 
   useEffect(() => {
@@ -20,7 +26,7 @@ function App() {
         setTiempoRestante((prev) => {
           if (prev <= 1) {
             clearInterval(timer);
-            enviarExamen(true);
+            enviarExamen(true); // Envío automático por tiempo
             return 0;
           }
           return prev - 1;
@@ -36,14 +42,16 @@ function App() {
     return `${m}:${s}`;
   };
 
+  // 1. Iniciar Sesión y Examen
   const iniciarExamen = async (e) => {
     e.preventDefault();
     setCargando(true);
     setError(null);
     try {
-      const data = await api.iniciarExamen(idEstudiante);
+      const data = await api.iniciarExamen(documento, password);
       setIdIntento(data.id_intento);
       setPreguntas(data.preguntas);
+      setNombreEstudiante(data.nombre);
       setTiempoRestante(90 * 60);
     } catch (err) {
       setError(err.message);
@@ -52,10 +60,12 @@ function App() {
     }
   };
 
+  // 2. Manejar selección de opciones
   const seleccionarOpcion = (idPregunta, idOpcion) => {
     setRespuestas({ ...respuestas, [idPregunta]: idOpcion });
   };
 
+  // 3. Enviar examen (Manual o por tiempo)
   const enviarExamen = async (porTiempo = false) => {
     if (!porTiempo && !window.confirm("¿Estás seguro de enviar el examen? No podrás cambiar tus respuestas.")) return;
     
@@ -79,6 +89,9 @@ function App() {
     }
   };
 
+  // --- RENDERIZADO ---
+
+  // Pantalla de Resultados
   if (resultado && diagnostico) {
     return (
       <div className="container">
@@ -98,32 +111,42 @@ function App() {
     );
   }
 
+  // Pantalla de Login
   if (!idIntento) {
     return (
       <div className="container inicio">
         <h1>Sistema de Evaluación</h1>
-        <p>Ingresa tu ID de estudiante para comenzar.</p>
+        <p>Ingresa tus credenciales para comenzar.</p>
         {error && <p className="error">{error}</p>}
-        <form onSubmit={iniciarExamen} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        
+        <form onSubmit={iniciarExamen} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '400px', margin: '0 auto' }}>
           <input 
-            type="number" 
-            placeholder="ID de Estudiante" 
-            value={idEstudiante}
-            onChange={(e) => setIdEstudiante(e.target.value)}
+            type="text" 
+            placeholder="Documento de Identidad" 
+            value={documento}
+            onChange={(e) => setDocumento(e.target.value)}
+            required
+          />
+          <input 
+            type="password" 
+            placeholder="Contraseña" 
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             required
           />
           <button type="submit" disabled={cargando}>
-            {cargando ? 'Cargando...' : 'Comenzar Examen'}
+            {cargando ? 'Ingresando...' : 'Comenzar Examen'}
           </button>
         </form>
       </div>
     );
   }
 
+  // Pantalla del Examen
   return (
     <div className="container">
       <div className="header-examen">
-        <h1>Examen en Curso</h1>
+        <h1>Examen en Curso - {nombreEstudiante}</h1>
         <div className="reloj">
           ⏳ Tiempo restante: {formatoTiempo(tiempoRestante)}
         </div>

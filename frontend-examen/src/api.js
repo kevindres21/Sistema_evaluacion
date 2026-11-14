@@ -1,14 +1,15 @@
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
 export const api = {
-  iniciarExamen: async (idEstudiante) => {
+  iniciarExamen: async (documento, password) => {
     const res = await fetch(`${BACKEND_URL}/api/examen/iniciar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id_estudiante: parseInt(idEstudiante) })
+      body: JSON.stringify({ documento: documento, password: password })
     });
-    if (!res.ok) throw new Error('Error al iniciar el examen. Verifica tu ID.');
-    return await res.json();
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Error al iniciar sesión. Verifica tus credenciales.');
+    return data;
   },
 
   calificarExamen: async (idIntento, respuestas) => {

@@ -16,8 +16,9 @@ modelo_gemini = genai.GenerativeModel('gemini-1.5-flash')
 app = FastAPI(title="Sistema de Evaluación API")
 
 # --- MODELOS DE DATOS ---
-class IniciarExamenRequest(BaseModel):
-    id_estudiante: int
+class LoginEstudianteRequest(BaseModel):
+    documento: str
+    password: str
 
 class RespuestaEstudiante(BaseModel):
     id_pregunta: int
@@ -27,27 +28,42 @@ class EnviarExamenRequest(BaseModel):
     id_intento: int
     respuestas: List[RespuestaEstudiante]
 
-# --- RUTA 1: INICIAR EXAMEN ---
+# --- RUTA 1: INICIAR EXAMEN (Con Login) ---
 @app.post("/api/examen/iniciar")
-def iniciar_examen(request: IniciarExamenRequest):
+def iniciar_examen(request: LoginEstudianteRequest):
     try:
-        # 1. Crear el registro en intentos_examen
+        # 1. Buscar al estudiante por documento y contraseña
+        estudiante = supabase.table('estudiantes').select('*').eq('documento_identidad', request.documento).eq('password_hash', request.password).execute()
+        
+        if not estudiante.data:
+            raise HTTPException(status_code=401, detail="Documento o contraseña incorrectos.")
+
+        estudiante_id = estudiante.data[0]['id_estudiante']
+        nombre_estudiante = estudiante.data[0]['nombres']
+
+        # 2. Crear el registro en intentos_examen usando el ID real
         intento = supabase.table('intentos_examen').insert({
-            "id_estudiante": request.id_estudiante,
+            "id_estudiante": estudiante_id,
             "estado": "En progreso"
         }).execute()
         
         id_intento = intento.data[0]['id_intento']
 
-        # 2. Generar las 30 preguntas
+        # 3. Generar las 30 preguntas
         preguntas_examen = generar_preguntas_aleatorias()
 
-        # 3. Guardar el detalle en la base de datos
+        # 4. Guardar el detalle en la base de datos
         detalles = [{"id_intento": id_intento, "id_pregunta": p['id_pregunta']} for p in preguntas_examen]
         supabase.table('detalle_intento').insert(detalles).execute()
 
-        return {"id_intento": id_intento, "preguntas": preguntas_examen}
+        return {
+            "id_intento": id_intento, 
+            "preguntas": preguntas_examen,
+            "nombre": nombre_estudiante
+        }
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
